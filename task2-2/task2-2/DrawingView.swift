@@ -16,10 +16,18 @@ enum AnimationType: Int {
     case moveAndRotate
 }
 
+
 class DrawingView: UIView {
 
     var shapeType: ShapeType = .triangle {
-        didSet { redraw() }
+        didSet {
+            
+            layer.sublayers?
+                    .filter { $0.name == "back" }
+                    .forEach { $0.removeFromSuperlayer() }
+            redraw()
+            
+        }
     }
 
     var fillStyle: FillStyle = .solid {
@@ -46,15 +54,22 @@ class DrawingView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        
         redraw()
     }
 
     private func redraw() {
+        // Очищаем старые фоны
+        shapeLayer.shadowOpacity = 0
+        shapeLayer.opacity = 1.0
+        shapeLayer.transform = CATransform3DIdentity
+        
+        
+
         let boundsRect = bounds.insetBy(dx: 40, dy: 40)
 
-        // Уменьшенный треугольник
         let shapeRect: CGRect
-        if shapeType != .hexagon {
+        if shapeType == .triangle {
             shapeRect = boundsRect.insetBy(dx: boundsRect.width * 0.25, dy: boundsRect.height * 0.25)
         } else {
             shapeRect = boundsRect
@@ -68,6 +83,7 @@ class DrawingView: UIView {
         switch shapeType {
         case .triangle:
             path = triangle
+            
         case .hexagon:
             path = hexagon
         case .union:
@@ -84,31 +100,39 @@ class DrawingView: UIView {
 
         shapeLayer.path = path.cgPath
         shapeLayer.fillRule = path.usesEvenOddFillRule ? .evenOdd : .nonZero
-
-        applyFillStyle()
+        
+        shapeLayer.contentsRect = shapeRect
+        
+        //applyFillStyle()
     }
 
-    private func applyFillStyle() {
-        shapeLayer.sublayers?.forEach { $0.removeFromSuperlayer() }
-        shapeLayer.shadowOpacity = 0
-        shapeLayer.opacity = 1.0
-        shapeLayer.transform = CATransform3DIdentity
-
+    public func applyFillStyle() {
+        layer.sublayers?
+                .filter { $0.name == "back" }
+                .forEach { $0.removeFromSuperlayer() }
+        
         switch fillStyle {
         case .solid:
             shapeLayer.fillColor = UIColor.systemBlue.cgColor
+
         case .gradient:
-            let gradient = CAGradientLayer()
-            gradient.frame = bounds
-            gradient.colors = [UIColor.systemPurple.cgColor, UIColor.systemTeal.cgColor]
-            gradient.mask = shapeLayer
-            layer.addSublayer(gradient)
+            shapeLayer.fillColor = UIColor.clear.cgColor
+
+            let gradientLayer = CAGradientLayer()
+            gradientLayer.frame = bounds
+            gradientLayer.colors = [UIColor.systemPink.cgColor, UIColor.systemOrange.cgColor]
+            gradientLayer.startPoint = CGPoint(x: 0, y: 0)
+            gradientLayer.endPoint = CGPoint(x: 1, y: 1)
+
+            gradientLayer.mask = shapeLayer
+            layer.addSublayer(gradientLayer)
+
         case .shadow:
             shapeLayer.fillColor = UIColor.systemGreen.cgColor
             shapeLayer.shadowColor = UIColor.black.cgColor
-            shapeLayer.shadowOffset = CGSize(width: 5, height: 5)
-            shapeLayer.shadowRadius = 8
-            shapeLayer.shadowOpacity = 0.5
+            shapeLayer.shadowOffset = CGSize(width: 4, height: 4)
+            shapeLayer.shadowRadius = 6
+            shapeLayer.shadowOpacity = 0.4
         }
     }
 
@@ -116,7 +140,9 @@ class DrawingView: UIView {
 
     func applyAnimation(type: AnimationType) {
         shapeLayer.removeAllAnimations()
-
+        layer.sublayers?
+                .filter { $0.name == "back" }
+                .forEach { $0.removeFromSuperlayer() }
         switch type {
         case .move:
             let anim = CABasicAnimation(keyPath: "position")
@@ -159,5 +185,58 @@ class DrawingView: UIView {
 
             shapeLayer.add(group, forKey: "moveAndRotate")
         }
+    }
+    
+    
+    func applyTriangleBackground(named imageName: String) {
+        guard shapeType == .triangle else {
+            print("not a triangle")
+            return
+            
+        }
+        guard let image = UIImage(named: imageName)?.cgImage else {
+            print("no image")
+            return
+            
+        }
+        guard let path = shapeLayer.path else {
+            print("no path")
+            return
+            
+        }
+        layer.sublayers?
+                .filter { $0.name == "back" }
+                .forEach { $0.removeFromSuperlayer() }
+
+        let imageLayer = CALayer()
+        imageLayer.contents = image
+        imageLayer.contentsGravity = .resizeAspectFill
+        imageLayer.name = "back"
+        
+        if let path = shapeLayer.path {
+            imageLayer.frame = path.boundingBox
+        } else {
+            imageLayer.frame = shapeLayer.bounds
+        }
+        let boundingBox = path.boundingBox
+
+        let translatedPath = UIBezierPath(cgPath: path)
+        translatedPath.apply(CGAffineTransform(translationX: -boundingBox.origin.x,
+                                               y: -boundingBox.origin.y))
+
+        let maskLayer = CAShapeLayer()
+        maskLayer.path = translatedPath.cgPath
+        maskLayer.frame = imageLayer.bounds
+        maskLayer.fillColor = UIColor.black.cgColor
+
+        imageLayer.mask = maskLayer
+
+        
+        if let superlayer = shapeLayer.superlayer {
+            superlayer.addSublayer(imageLayer)
+        } else {
+            layer.addSublayer(imageLayer) 
+        }
+        print("func ended")
     }
 }
